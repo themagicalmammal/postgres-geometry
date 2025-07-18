@@ -299,6 +299,8 @@ class PolygonField(PointMixin, models.Field):
     Representation = ((x1,y1),...)
     """
 
+    description = "Polygon (similar to closed path)"
+
     @require_postgres
     def db_type(self, connection):
         """Return the database type for this field."""
@@ -310,26 +312,57 @@ class PolygonField(PointMixin, models.Field):
 
     def to_python(self, value):
         """Convert a value from the database to a list of Point objects."""
-        return super().to_python(value)
+        if value is None:
+            return None
+
+        # Already parsed
+        if isinstance(value, list) and all(isinstance(p, Point) for p in value):
+            if len(value) < 3:
+                raise ValueError("Polygon requires at least 3 points")
+            return value
+
+        # From list of tuples
+        if isinstance(value, list | tuple) and all(isinstance(p, list | tuple) for p in value):
+            if len(value) < 3:
+                raise ValueError("Polygon requires at least 3 points")
+            return [Point(*pt) for pt in value]
+
+        # From string input like ((1,2),(3,4),(5,6))
+        point_re = re.compile(r"\(\s*(-?\d+(?:\.\d*)?)\s*,\s*(-?\d+(?:\.\d*)?)\s*\)")
+        matches = point_re.findall(value) if isinstance(value, str) else []
+        if len(matches) >= 3:
+            return [Point(float(x), float(y)) for x, y in matches]
+
+        raise ValueError(f"Cannot parse polygon from value: {value!r}")
 
     def get_prep_value(self, value):
         """Prepare the value for saving to the database."""
-        if value:
-            value = tuple(value)
-            if len(value) < 3:
-                raise ValueError("Needs at minimum 3 points")
+        if value is None:
+            return None
+        if not isinstance(value, list | tuple) or len(value) < 3:
+            raise ValueError("Needs at minimum 3 points")
 
-        value = self._get_prep_value(value)
-        return f"({value})" if value else None
+        points = []
+        for pt in value:
+            if not isinstance(pt, Point):
+                pt = Point(*pt)
+            points.append(f"({pt.x},{pt.y})")
+
+        return f"({','.join(points)})"
 
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
             "form_class": forms.CharField,
-            "help_text": "Enter two or more points as (x1,y1),(x2,y2),,...",
+            "help_text": "Enter three or more points as (x1,y1),(x2,y2),(x3,y3),...",
         }
         defaults.update(kwargs)
         return super().formfield(**defaults)
+
+    def deconstruct(self):
+        """Deconstruct the field for migrations."""
+        name, path, args, kwargs = super().deconstruct()
+        return name, path, args, kwargs
 
 
 class CircleField(models.Field):
