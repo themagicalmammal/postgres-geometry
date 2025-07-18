@@ -62,6 +62,46 @@ class Point:
         return (self.x, self.y) < (other.x, other.y)
 
 
+class Line:
+    """Represents an infinite line defined by Ax + By + C = 0."""
+
+    LINE_RE = re.compile(
+        r"^\{\s*(?P<A>" + _FLOAT_RE + r")\s*,\s*(?P<B>" + _FLOAT_RE + r")\s*,\s*(?P<C>" + _FLOAT_RE + r")\s*\}$"
+    )
+
+    def __init__(self, A: float, B: float, C: float):
+        if A == 0 and B == 0:
+            raise ValueError("At least one of A or B must be non-zero for a valid line")
+        self.A = float(A)
+        self.B = float(B)
+        self.C = float(C)
+
+    @staticmethod
+    def from_string(value: str) -> "Line":
+        """Parse a string like '{A,B,C}' into a Line instance."""
+        match = Line.LINE_RE.fullmatch(value.strip())
+        if not match:
+            raise ValueError(f"Value '{value}' is not a valid line")
+        A = float(match.group("A"))
+        B = float(match.group("B"))
+        C = float(match.group("C"))
+        return Line(A, B, C)
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Line):
+            return False
+        return (self.A, self.B, self.C) == (other.A, other.B, other.C)
+
+    def __repr__(self) -> str:
+        return f"Line(A={self.A}, B={self.B}, C={self.C})"
+
+    def __str__(self) -> str:
+        return f"{{{self.A},{self.B},{self.C}}}"
+
+    def evaluate(self, x: float, y: float) -> float:
+        """Evaluate Ax + By + C at point (x,y). Useful to check point-line relation."""
+        return self.A * x + self.B * y + self.C
+
 class Circle:
     """A circle defined by a center point and radius."""
 

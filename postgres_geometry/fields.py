@@ -5,7 +5,7 @@ import re
 from django import forms
 from django.db import models
 
-from .utils import Circle, Point, PointMixin, require_postgres
+from .utils import Circle, Point, PointMixin, Line, require_postgres
 
 
 class PointField(models.Field):
@@ -51,6 +51,74 @@ class PointField(models.Field):
         defaults = {
             "form_class": forms.CharField,
             "help_text": "Enter a point as (x,y)",
+        }
+        defaults.update(kwargs)
+        return super().formfield(**defaults)
+
+    def deconstruct(self):
+        """Deconstruct the field for migrations."""
+        name, path, args, kwargs = super().deconstruct()
+        return name, path, args, kwargs
+
+
+class LineField(models.Field):
+    """Field to store an infinite line defined by coefficients A, B, C.
+
+    Name = 'line'
+    Storage Size = 24 bytes
+    Description = Infinite line
+    Representation = {A,B,C}
+    """
+
+    description = "Infinite line"
+
+    @require_postgres
+    def db_type(self, connection):
+        """Return the database type for this field."""
+        return "line"
+
+    def from_db_value(self, value, expression, connection):
+        """Convert the value from the database to a Python object."""
+        return self.to_python(value)
+
+    def to_python(self, value):
+        """Convert a value from the database to a Line object."""
+        if value is None or isinstance(value, Line):
+            return value
+
+        if isinstance(value, str):
+            try:
+                return Line.from_string(value)
+            except ValueError as e:
+                raise ValueError(f"Invalid line string: {value}. Error: {e}")
+
+        # Accept tuple/list of 3 floats/ints
+        if isinstance(value, tuple | list) and len(value) == 3:
+            try:
+                return Line(*value)
+            except Exception as e:
+                raise ValueError(f"Invalid line coefficients: {value}. Error: {e}")
+
+        raise ValueError(f"Cannot convert {value!r} to Line.")
+
+    def get_prep_value(self, value):
+        """Prepare the value for saving to the database."""
+        if value is None:
+            return None
+        if not isinstance(value, Line):
+            # Try to convert tuple/list to Line
+            if isinstance(value, tuple | list) and len(value) == 3:
+                value = Line(*value)
+            else:
+                raise ValueError(f"Cannot prepare value {value!r} as Line")
+
+        return str(value)  # Will output as "{A,B,C}"
+
+    def formfield(self, **kwargs):
+        """Returns a Django form field for this model field."""
+        defaults = {
+            "form_class": forms.CharField,
+            "help_text": "Enter line as {A,B,C} representing Ax + By + C = 0",
         }
         defaults.update(kwargs)
         return super().formfield(**defaults)
@@ -410,7 +478,6 @@ class CircleField(models.Field):
 
         # If value is none of the above, error out explicitly
         raise ValueError(f"Cannot convert {value!r} to Circle")
-
 
     def get_prep_value(self, value):
         """Prepare the value for saving to the database."""
