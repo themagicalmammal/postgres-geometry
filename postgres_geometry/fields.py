@@ -374,6 +374,8 @@ class CircleField(models.Field):
     Representation = <(x,y),r> (center point and radius)
     """
 
+    description = "Circle"
+
     @require_postgres
     def db_type(self, connection):
         """Return the database type for this field."""
@@ -384,25 +386,62 @@ class CircleField(models.Field):
         return self.to_python(value)
 
     def to_python(self, value):
-        """Convert a value from the database to a list of Point objects."""
+        """Convert a value from the database to a Circle object."""
         if value is None or isinstance(value, Circle):
             return value
-        try:
-            return Circle.from_string(value)
-        except Exception as e:
-            raise ValueError(f"Invalid circle value: {value!r}. Error: {e}")
+
+        # Accept tuple-like inputs (center, radius)
+        if isinstance(value, tuple | list) and len(value) == 2:
+            center, radius = value
+            if not isinstance(center, Point):
+                center = Point(*center)
+            return Circle(center, radius)
+
+        # Accept single radius with default center (0,0)
+        if isinstance(value, int | float):
+            return Circle(value)
+
+        # Only parse string inputs here
+        if isinstance(value, str):
+            try:
+                return Circle.from_string(value)
+            except Exception as e:
+                raise ValueError(f"Invalid circle value: {value!r}. Error: {e}")
+
+        # If value is none of the above, error out explicitly
+        raise ValueError(f"Cannot convert {value!r} to Circle")
+
 
     def get_prep_value(self, value):
         """Prepare the value for saving to the database."""
-        if value:
-            return f"<({value.center.x},{value.center.y}),{value.radius}>"
-        return None
+        if value is None:
+            return None
+
+        if not isinstance(value, Circle):
+            # Try converting from tuple/list
+            if isinstance(value, tuple | list) and len(value) == 2:
+                center, radius = value
+                if not isinstance(center, Point):
+                    center = Point(*center)
+                value = Circle(center, radius)
+            else:
+                raise ValueError(f"Cannot prepare value {value!r} as Circle")
+
+        if value.radius < 0:
+            raise ValueError("Circle radius cannot be negative")
+
+        return f"<({value.center.x},{value.center.y}),{value.radius}>"
 
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
             "form_class": forms.CharField,
-            "help_text": "Enter circle as <(x,y),r>",
+            "help_text": "Enter a circle as <(x,y),r>",
         }
         defaults.update(kwargs)
         return super().formfield(**defaults)
+
+    def deconstruct(self):
+        """Deconstruct the field for migrations."""
+        name, path, args, kwargs = super().deconstruct()
+        return name, path, args, kwargs
