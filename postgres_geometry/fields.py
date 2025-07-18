@@ -7,7 +7,13 @@ from .utils import Circle, Point, PointMixin, require_postgres
 
 
 class PointField(models.Field):
-    """Field to store a single point in space."""
+    """Field to store a single point in space.
+
+    Name = 'point'
+    Storage Size = 16 bytes
+    Description = Point on a plane
+    Representation = (x,y)
+    """
 
     @require_postgres
     def db_type(self, connection):
@@ -28,10 +34,6 @@ class PointField(models.Field):
         """Prepare the value for saving to the database."""
         return f"({value.x},{value.y})" if value else None
 
-    def get_prep_lookup(self, lookup_type, value):
-        """Prepare the value for a lookup operation."""
-        raise NotImplementedError(f"Lookup type '{lookup_type}' not implemented.")
-
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
@@ -43,7 +45,13 @@ class PointField(models.Field):
 
 
 class LineSegmentField(PointMixin, models.Field):
-    """Field to store a segment (line segment with exactly two points)."""
+    """Field to store a segment (line segment with exactly two points).
+
+    Name = 'lseg'
+    Storage Size = 32 bytes
+    Description = Finite line segment
+    Representation = [(x1,y1),(x2,y2)]
+    """
 
     @require_postgres
     def db_type(self, connection):
@@ -69,10 +77,6 @@ class LineSegmentField(PointMixin, models.Field):
             raise ValueError("Segment needs exactly 2 points")
         return self._get_prep_value(value)
 
-    def get_prep_lookup(self, lookup_type, value):
-        """Prepare the value for a lookup operation."""
-        raise NotImplementedError(f"Lookup type '{lookup_type}' not implemented.")
-
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
@@ -84,7 +88,13 @@ class LineSegmentField(PointMixin, models.Field):
 
 
 class BoxField(PointMixin, models.Field):
-    """Field to store a box, defined by two opposite corner points."""
+    """Field to store a box, defined by two opposite corner points.
+
+    Name = 'box'
+    Storage Size = 32 bytes
+    Description = Rectangular box
+    Representation = (x1,y1),(x2,y2)
+    """
 
     @require_postgres
     def db_type(self, connection):
@@ -110,10 +120,6 @@ class BoxField(PointMixin, models.Field):
             raise ValueError("Box needs exactly 2 points")
         return self._get_prep_value(value)
 
-    def get_prep_lookup(self, lookup_type, value):
-        """Prepare the value for a lookup operation."""
-        raise NotImplementedError(f"Lookup type '{lookup_type}' not implemented.")
-
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
@@ -125,7 +131,13 @@ class BoxField(PointMixin, models.Field):
 
 
 class PathField(PointMixin, models.Field):
-    """Field to store a path; needs at least two points."""
+    """Field to store a path; needs at least two points.
+
+    Name = 'path'
+    Storage Size = 16+16n bytes
+    Description = Closed path (similar to polygon)/ Open path
+    Representation = [(x1,y1),...]
+    """
 
     @require_postgres
     def db_type(self, connection):
@@ -151,10 +163,6 @@ class PathField(PointMixin, models.Field):
         value = self._get_prep_value(value)
         return f"[{value}]" if value else None
 
-    def get_prep_lookup(self, lookup_type, value):
-        """Prepare the value for a lookup operation."""
-        raise NotImplementedError(f"Lookup type '{lookup_type}' not implemented.")
-
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
@@ -166,7 +174,13 @@ class PathField(PointMixin, models.Field):
 
 
 class PolygonField(PointMixin, models.Field):
-    """Field to store a polygon; needs at least three points."""
+    """Field to store a polygon, needs at least three points.
+
+    Name = 'polygon'
+    Storage Size = 40+16n bytes
+    Description = Polygon (similar to closed path)
+    Representation = ((x1,y1),...)
+    """
 
     @require_postgres
     def db_type(self, connection):
@@ -191,22 +205,24 @@ class PolygonField(PointMixin, models.Field):
         value = self._get_prep_value(value)
         return f"({value})" if value else None
 
-    def get_prep_lookup(self, lookup_type, value):
-        """Prepare the value for a lookup operation."""
-        raise NotImplementedError(f"Lookup type '{lookup_type}' not implemented.")
-
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
             "form_class": forms.CharField,
-            "help_text": "Enter three or more points as (x1,y1),(x2,y2),(x3,y3),...",
+            "help_text": "Enter two or more points as (x1,y1),(x2,y2),,...",
         }
         defaults.update(kwargs)
         return super().formfield(**defaults)
 
 
 class CircleField(models.Field):
-    """Custom Django model field to store a PostgreSQL circle."""
+    """Field to store a circle defined by a center point and radius.
+
+    Name = 'circle'
+    Storage Size = 24 bytes
+    Description = Circle
+    Representation = <(x,y),r> (center point and radius)
+    """
 
     @require_postgres
     def db_type(self, connection):
@@ -231,10 +247,6 @@ class CircleField(models.Field):
         if value:
             return f"<({value.center.x},{value.center.y}),{value.radius}>"
         return None
-
-    def get_prep_lookup(self, lookup_type, value):
-        """Prepare the value for a lookup operation."""
-        raise NotImplementedError(f"Lookup type '{lookup_type}' not implemented.")
 
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
