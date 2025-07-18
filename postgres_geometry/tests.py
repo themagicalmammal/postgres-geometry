@@ -1,9 +1,11 @@
 """Tests for postgres_geometry."""
 
+from typing import Protocol, Type
 from unittest.mock import Mock
 
 from django.core.exceptions import FieldError
 from django.db import connection, models
+from django.db.models import Field
 from django.test import SimpleTestCase, TestCase
 
 from .fields import (
@@ -128,25 +130,35 @@ class CircleTests(SimpleTestCase):
         self.assertTrue(Point(1, 1) == Point(1.0, 1.0))
 
 
+class GeometryFieldTestProtocol(Protocol):
+    """Protocol for geometry field tests."""
+
+    field: Type[Field]
+    db_type: str
+
+    # Include essential assertion methods from TestCase
+    def assertEqual(self, a, b, msg=None) -> None: ...  # noqa: D102, N802
+    def assertRaises(self, exc, callable=None, *args, **kwargs) -> None: ...  # noqa: D102, N802
+    def assertIsInstance(self, obj, cls, msg=None) -> None: ...  # noqa: D102, N802
+
+
 class GeometryFieldTestsMixin:
     """Mixin for geometry field tests."""
 
-    def test_db_type(self):
-        """Test db_type method for geometry fields."""
+    def test_db_type(self: GeometryFieldTestProtocol):
+        """Test db_type method for the field."""
         self.assertEqual(self.field().db_type(connection), self.db_type)
 
-    def test_postgres_connection(self):
+    def test_postgres_connection(self: GeometryFieldTestProtocol):
         """Test db_type with a Postgres connection."""
         m_connection = Mock()
         m_connection.settings_dict = {"ENGINE": "psycopg2"}
-
         self.assertIsInstance(self.field().db_type(m_connection), str)
 
-    def test_non_postgres_connection(self):
+    def test_non_postgres_connection(self: GeometryFieldTestProtocol):
         """Test db_type with a non-Postgres connection."""
         m_connection = Mock()
         m_connection.settings_dict = {"ENGINE": "sqlite"}
-
         self.assertRaises(FieldError, self.field().db_type, m_connection)
 
 
