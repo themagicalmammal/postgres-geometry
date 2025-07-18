@@ -13,17 +13,7 @@ def require_postgres(fn):
 
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        # Try to find a 'connection' argument either in args or kwargs
-        connection = None
-
-        # Check kwargs first
-        if "connection" in kwargs:
-            connection = kwargs["connection"]
-        else:
-            # Heuristic: assume first positional argument after self is connection
-            if len(args) >= 1:
-                connection = args[0]
-
+        connection = kwargs.get("connection") or (args[0] if args else None)
         if connection is None:
             raise ValueError("No 'connection' argument found to check database engine")
 
@@ -43,7 +33,7 @@ _FLOAT_RE = r"-?(?:\d+(?:\.\d*)?|\.\d+)"
 class Point:
     """A 2D point with float coordinates."""
 
-    POINT_RE = re.compile(rf"\((?P<x>{_FLOAT_RE}),(?P<y>{_FLOAT_RE})\)")
+    POINT_RE = re.compile(rf"\(\s*(?P<x>{_FLOAT_RE})\s*,\s*(?P<y>{_FLOAT_RE})\s*\)")
 
     def __init__(self, x: float = 0.0, y: float = 0.0):
         self.x = float(x)
@@ -55,9 +45,7 @@ class Point:
         match = Point.POINT_RE.fullmatch(value.strip())
         if not match:
             raise ValueError(f"Value '{value}' is not a valid point.")
-        x = float(match.group("x"))
-        y = float(match.group("y"))
-        return Point(x, y)
+        return Point(float(match.group("x")), float(match.group("y")))
 
     def __repr__(self) -> str:
         return f"<Point({self.x}, {self.y})>"
