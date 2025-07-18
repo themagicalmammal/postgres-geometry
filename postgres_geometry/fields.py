@@ -144,6 +144,8 @@ class BoxField(PointMixin, models.Field):
     Representation = (x1,y1),(x2,y2)
     """
 
+    description = "Rectangular box"
+
     @require_postgres
     def db_type(self, connection):
         """Return the database type for this field."""
@@ -157,16 +159,39 @@ class BoxField(PointMixin, models.Field):
         """Convert a value from the database to a list of Point objects."""
         if value is None:
             return None
-        value = super().to_python(value)
-        if value and len(value) != 2:
-            raise ValueError("Box needs exactly 2 points")
-        return value
+
+        if isinstance(value, list) and all(isinstance(p, Point) for p in value):
+            if len(value) != 2:
+                raise ValueError("Box needs exactly 2 points")
+            return value
+
+        if isinstance(value, list | tuple) and len(value) == 2:
+            try:
+                return [Point(*value[0]), Point(*value[1])]
+            except Exception:
+                pass
+
+        # Parse string like: (1,2),(3,4)
+        point_re = re.compile(r"\(\s*(-?\d+(?:\.\d*)?)\s*,\s*(-?\d+(?:\.\d*)?)\s*\)")
+        matches = point_re.findall(value) if isinstance(value, str) else []
+        if len(matches) == 2:
+            return [Point(float(x), float(y)) for x, y in matches]
+
+        raise ValueError(f"Cannot parse box from value: {value!r}")
 
     def get_prep_value(self, value):
         """Prepare the value for saving to the database."""
-        if value and len(value) != 2:
+        if value is None:
+            return None
+        if not isinstance(value, list) or len(value) != 2:
             raise ValueError("Box needs exactly 2 points")
-        return self._get_prep_value(value)
+
+        points = []
+        for pt in value:
+            if not isinstance(pt, Point):
+                pt = Point(*pt)
+            points.append(f"({pt.x},{pt.y})")
+        return f"{','.join(points)}"
 
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
@@ -177,6 +202,11 @@ class BoxField(PointMixin, models.Field):
         defaults.update(kwargs)
         return super().formfield(**defaults)
 
+    def deconstruct(self):
+        """Deconstruct the field for migrations."""
+        name, path, args, kwargs = super().deconstruct()
+        return name, path, args, kwargs
+
 
 class PathField(PointMixin, models.Field):
     """Field to store a path; needs at least two points.
@@ -186,6 +216,12 @@ class PathField(PointMixin, models.Field):
     Description = Closed path (similar to polygon)/ Open path
     Representation = [(x1,y1),...]
     """
+
+    description = "Closed path (similar to polygon)/ Open path"
+
+    def __init__(self, *args, closed=False, **kwargs):
+        self.closed = closed
+        super().__init__(*args, **kwargs)
 
     @require_postgres
     def db_type(self, connection):
@@ -198,18 +234,44 @@ class PathField(PointMixin, models.Field):
 
     def to_python(self, value):
         """Convert a value from the database to a list of Point objects."""
-        return super().to_python(value)
+        if value is None:
+            return None
+
+        if isinstance(value, list) and all(isinstance(p, Point) for p in value):
+            if len(value) < 2:
+                raise ValueError("Path requires at least 2 points")
+            return value
+
+        # Handle list/tuple of tuples
+        if isinstance(value, list | tuple) and all(isinstance(p, list | tuple) for p in value):
+            if len(value) < 2:
+                raise ValueError("Path requires at least 2 points")
+            return [Point(*pt) for pt in value]
+
+        # Parse string input like [(1,2),(3,4)] or ((1,2),(3,4))
+        point_re = re.compile(r"\(\s*(-?\d+(?:\.\d*)?)\s*,\s*(-?\d+(?:\.\d*)?)\s*\)")
+        matches = point_re.findall(value) if isinstance(value, str) else []
+        if len(matches) >= 2:
+            return [Point(float(x), float(y)) for x, y in matches]
+
+        raise ValueError(f"Cannot parse path from value: {value!r}")
 
     def get_prep_value(self, value):
         """Prepare the value for saving to the database."""
-        if value:
-            value = tuple(value)
+        if value is None:
+            return None
+        if not isinstance(value, list | tuple) or len(value) < 2:
+            raise ValueError("Needs at minimum 2 points")
 
-            if len(value) < 2:
-                raise ValueError("Needs at minimum 2 points")
+        points = []
+        for pt in value:
+            if not isinstance(pt, Point):
+                pt = Point(*pt)
+            points.append(f"({pt.x},{pt.y})")
 
-        value = self._get_prep_value(value)
-        return f"[{value}]" if value else None
+        open_bracket = "(" if self.closed else "["
+        close_bracket = ")" if self.closed else "]"
+        return f"{open_bracket}{','.join(points)}{close_bracket}"
 
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
@@ -219,6 +281,13 @@ class PathField(PointMixin, models.Field):
         }
         defaults.update(kwargs)
         return super().formfield(**defaults)
+
+    def deconstruct(self):
+        """Deconstruct the field for migrations."""
+        name, path, args, kwargs = super().deconstruct()
+        if self.closed:
+            kwargs["closed"] = self.closed
+        return name, path, args, kwargs
 
 
 class PolygonField(PointMixin, models.Field):
