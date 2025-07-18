@@ -5,7 +5,7 @@ import re
 from django import forms
 from django.db import models
 
-from .utils import Circle, Point, PointMixin, Line, require_postgres
+from .utils import Circle, Line, Point, PointMixin, require_postgres
 
 
 class PointField(models.Field):

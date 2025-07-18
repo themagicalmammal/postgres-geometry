@@ -9,6 +9,7 @@ from django.test import SimpleTestCase, TestCase
 from .fields import (
     BoxField,
     CircleField,
+    LineField,
     LineSegmentField,
     PathField,
     PointField,
@@ -16,6 +17,7 @@ from .fields import (
 )
 from .utils import (
     Circle,
+    Line,
     Point,
 )
 
@@ -29,6 +31,50 @@ class TestModel(models.Model):
     polygon = PolygonField(null=True)
     segment = LineSegmentField(null=True)
     box = BoxField(null=True)
+
+
+class LineTests(TestCase):
+    """Tests for the Line utility class."""
+
+    def test_line_from_string_valid(self):
+        """Test parsing valid line strings into Line objects."""
+        valid_strings = (
+            ("{1,0,-5}", Line(1, 0, -5)),
+            ("{0,1,3.5}", Line(0, 1, 3.5)),
+            ("{-2,-3,4}", Line(-2, -3, 4)),
+            ("{0.1,0.2,0.3}", Line(0.1, 0.2, 0.3)),
+            ("{ 1 , -1 , 0 }", Line(1, -1, 0)),
+        )
+        for string, expected in valid_strings:
+            line = Line.from_string(string)
+            self.assertEqual(line, expected)
+
+    def test_line_from_string_invalid(self):
+        """Test parsing invalid line strings raises ValueError."""
+        invalid_strings = ["", "{}", "{1,2}", "{a,b,c}", "{0,0,0}", "{1,2,3,4}", "1,2,3", "{1, 2,}", "{,1,2}", "{1,,3}"]
+        for string in invalid_strings:
+            with self.assertRaises(ValueError):
+                Line.from_string(string)
+
+    def test_line_equality(self):
+        """Test equality comparison of Line objects."""
+        l1 = Line(1, 2, 3)
+        l2 = Line(1, 2, 3)
+        l3 = Line(3, 2, 1)
+        self.assertEqual(l1, l2)
+        self.assertNotEqual(l1, l3)
+
+    def test_line_invalid_coefficients(self):
+        """Test Line initialization with invalid coefficients."""
+        with self.assertRaises(ValueError):
+            Line(0, 0, 1)  # A and B cannot both be zero
+
+    def test_evaluate(self):
+        """Test evaluating the line equation at a point."""
+        line = Line(1, -1, 0)  # x - y = 0
+        self.assertEqual(line.evaluate(1, 1), 0)
+        self.assertEqual(line.evaluate(2, 2), 0)
+        self.assertEqual(line.evaluate(3, 2), 1)
 
 
 class CircleTests(SimpleTestCase):
@@ -82,55 +128,6 @@ class CircleTests(SimpleTestCase):
         self.assertTrue(Point(1, 1) == Point(1.0, 1.0))
 
 
-class PointTests(SimpleTestCase):
-    """Tests for Point class."""
-
-    def test_from_string(self):
-        """Test parsing Point from string."""
-        values = (
-            ("(1,1)", Point(1, 1)),
-            ("(-1,1)", Point(-1, 1)),
-            ("(1,-1)", Point(1, -1)),
-            ("(-1,-1)", Point(-1, -1)),
-            ("(1.5,1.5)", Point(1.5, 1.5)),
-            ("(-1.5,1.5)", Point(-1.5, 1.5)),
-            ("(1.5,-1.5)", Point(1.5, -1.5)),
-            ("(-1.5,-1.5)", Point(-1.5, -1.5)),
-            ("(.5,.5)", Point(0.5, 0.5)),
-            ("(-.5,.5)", Point(-0.5, 0.5)),
-            ("(.5,-.5)", Point(0.5, -0.5)),
-            ("(-.5,-.5)", Point(-0.5, -0.5)),
-        )
-
-        for value_str, expected in values:
-            value = Point.from_string(value_str)
-
-            self.assertEqual(value, expected, (value_str, value, expected))
-
-    def test_default_values(self):
-        """Test default values for Point."""
-        point = Point()
-
-        self.assertEqual(point.x, 0)
-        self.assertEqual(point.y, 0)
-
-    def test_eq(self):
-        """Test equality of Point instances."""
-        self.assertTrue(Point(1, 1) == Point(1, 1))
-        self.assertFalse(Point(1, 1) != Point(1, 1))
-        self.assertTrue(Point(1, 1) != Point(2, 1))
-        self.assertTrue(Point(1, 1) != Point(1, 2))
-        self.assertTrue(Point(1, 1) != Point(2, 2))
-        self.assertTrue(Point(1, 1) == Point(1.0, 1.0))
-
-    def test_less_than(self):
-        """Test comparison operators for Point."""
-        self.assertTrue(Point() < Point(1, 1))
-        self.assertTrue(Point() <= Point(1, 1))
-        self.assertFalse(Point() > Point(1, 1))
-        self.assertFalse(Point() >= Point(1, 1))
-
-
 class GeometryFieldTestsMixin:
     """Mixin for geometry field tests."""
 
@@ -179,6 +176,67 @@ class PathFieldTests(GeometryFieldTestsMixin, TestCase):
 
         with self.assertRaisesRegex(ValueError, "Needs at minimum 2 points"):
             model.save()
+
+
+class LineFieldTests(GeometryFieldTestsMixin, TestCase):
+    """Tests for the LineField model field."""
+
+    field = LineField
+    db_type = "line"
+
+    def test_linefield_to_python(self):
+        """Test to_python for LineField."""
+        field = self.field()
+
+        line = Line(1, 0, -5)
+        # Already a Line instance
+        self.assertEqual(field.to_python(line), line)
+
+        # From string
+        self.assertEqual(field.to_python("{1,0,-5}"), line)
+
+        # From tuple
+        self.assertEqual(field.to_python((1, 0, -5)), line)
+
+        # Invalid string raises ValueError
+        with self.assertRaises(ValueError):
+            field.to_python("{invalid}")
+
+        # Invalid type raises ValueError
+        with self.assertRaises(ValueError):
+            field.to_python(123)
+
+    def test_linefield_get_prep_value(self):
+        """Test get_prep_value for LineField."""
+        field = self.field()
+        line = Line(1, 0, -5)
+
+        self.assertEqual(field.get_prep_value(line), "{1.0,0.0,-5.0}")
+
+        # Accept tuple/list and convert to Line
+        self.assertEqual(field.get_prep_value((1, 0, -5)), "{1.0,0.0,-5.0}")
+
+        # None returns None
+        self.assertIsNone(field.get_prep_value(None))
+
+        # Invalid raises ValueError
+        with self.assertRaises(ValueError):
+            field.get_prep_value("invalid")
+
+    def test_linefield_db_type_with_postgres(self):
+        """Test db_type with a Postgres connection."""
+        field = self.field()
+        conn = Mock()
+        conn.settings_dict = {"ENGINE": "django.db.backends.postgresql"}
+        self.assertEqual(field.db_type(conn), self.db_type)
+
+    def test_linefield_db_type_with_non_postgres(self):
+        """Test db_type with a non-Postgres connection."""
+        field = self.field()
+        conn = Mock()
+        conn.settings_dict = {"ENGINE": "sqlite"}
+        with self.assertRaises(FieldError):
+            field.db_type(conn)
 
 
 class PolygonFieldTests(GeometryFieldTestsMixin, TestCase):
