@@ -17,7 +17,7 @@ from .fields import (
     PointField,
     PolygonField,
 )
-from .utils import (
+from .types import (
     Circle,
     Line,
     Point,
