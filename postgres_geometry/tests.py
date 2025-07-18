@@ -8,13 +8,15 @@ from django.test import SimpleTestCase, TestCase
 
 from .fields import (
     BoxField,
-    Circle,
     CircleField,
-    Point,
+    LineSegmentField,
+    PathField,
     PointField,
     PolygonField,
-    SegmentField,
-    SegmentPathField,
+)
+from .utils import (
+    Circle,
+    Point,
 )
 
 
@@ -23,9 +25,9 @@ class TestModel(models.Model):
 
     id = models.BigAutoField(primary_key=True)  # ✅ Explicit primary key
     point = PointField(null=True)
-    segment_path = SegmentPathField(null=True)
+    segment_path = PathField(null=True)
     polygon = PolygonField(null=True)
-    segment = SegmentField(null=True)
+    segment = LineSegmentField(null=True)
     box = BoxField(null=True)
 
 
@@ -82,6 +84,7 @@ class CircleTests(SimpleTestCase):
 
 class PointTests(SimpleTestCase):
     """Tests for Point class."""
+
     def test_from_string(self):
         """Test parsing Point from string."""
         values = (
@@ -130,6 +133,7 @@ class PointTests(SimpleTestCase):
 
 class GeometryFieldTestsMixin:
     """Mixin for geometry field tests."""
+
     def test_db_type(self):
         """Test db_type method for geometry fields."""
         self.assertEqual(self.field().db_type(connection), self.db_type)
@@ -149,9 +153,10 @@ class GeometryFieldTestsMixin:
         self.assertRaises(FieldError, self.field().db_type, m_connection)
 
 
-class SegmentPathFieldTests(GeometryFieldTestsMixin, TestCase):
-    """Tests for SegmentPathField."""
-    field = SegmentPathField
+class PathFieldTests(GeometryFieldTestsMixin, TestCase):
+    """Tests for PathField."""
+
+    field = PathField
     db_type = "path"
 
     def test_store_field(self):
@@ -178,6 +183,7 @@ class SegmentPathFieldTests(GeometryFieldTestsMixin, TestCase):
 
 class PolygonFieldTests(GeometryFieldTestsMixin, TestCase):
     """Tests for PolygonField."""
+
     field = PolygonField
     db_type = "polygon"
 
@@ -205,6 +211,7 @@ class PolygonFieldTests(GeometryFieldTestsMixin, TestCase):
 
 class PointFieldTests(GeometryFieldTestsMixin, TestCase):
     """Tests for PointField."""
+
     field = PointField
     db_type = "point"
 
@@ -221,9 +228,10 @@ class PointFieldTests(GeometryFieldTestsMixin, TestCase):
         self.assertEqual(model.point, value)
 
 
-class SegmentFieldTests(GeometryFieldTestsMixin, TestCase):
-    """Tests for SegmentField."""
-    field = SegmentField
+class LineSegmentFieldTests(GeometryFieldTestsMixin, TestCase):
+    """Tests for LineSegmentField."""
+
+    field = LineSegmentField
     db_type = "lseg"
 
     def test_store_field(self):
@@ -257,6 +265,7 @@ class SegmentFieldTests(GeometryFieldTestsMixin, TestCase):
 
 class BoxFieldTests(GeometryFieldTestsMixin, TestCase):
     """Tests for BoxField."""
+
     field = BoxField
     db_type = "box"
 
@@ -303,6 +312,7 @@ class BoxFieldTests(GeometryFieldTestsMixin, TestCase):
 
 class CircleFieldTests(GeometryFieldTestsMixin, TestCase):
     """Tests for CircleField."""
+
     field = CircleField
     db_type = "circle"
 
