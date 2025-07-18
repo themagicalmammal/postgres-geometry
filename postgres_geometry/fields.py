@@ -1,5 +1,7 @@
 """Geometry fields for Django."""
 
+import re
+
 from django import forms
 from django.db import models
 
@@ -15,6 +17,8 @@ class PointField(models.Field):
     Representation = (x,y)
     """
 
+    description = "Point on a plane"
+
     @require_postgres
     def db_type(self, connection):
         """Return the database type for this field."""
@@ -26,13 +30,21 @@ class PointField(models.Field):
 
     def to_python(self, value):
         """Convert a value from the database to a list of Point objects."""
-        if isinstance(value, Point) or value is None:
+        if value is None or isinstance(value, Point):
             return value
-        return Point.from_string(value)
+        if isinstance(value, tuple | list) and len(value) == 2:
+            return Point(value[0], value[1])
+        if isinstance(value, str):
+            return Point.from_string(value)
+        raise TypeError(f"Cannot convert {value!r} to Point.")
 
     def get_prep_value(self, value):
         """Prepare the value for saving to the database."""
-        return f"({value.x},{value.y})" if value else None
+        if value is None:
+            return None
+        if not isinstance(value, Point):
+            value = self.to_python(value)
+        return f"({value.x},{value.y})"
 
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
@@ -43,6 +55,11 @@ class PointField(models.Field):
         defaults.update(kwargs)
         return super().formfield(**defaults)
 
+    def deconstruct(self):
+        """Deconstruct the field for migrations."""
+        name, path, args, kwargs = super().deconstruct()
+        return name, path, args, kwargs
+
 
 class LineSegmentField(PointMixin, models.Field):
     """Field to store a segment (line segment with exactly two points).
@@ -52,6 +69,8 @@ class LineSegmentField(PointMixin, models.Field):
     Description = Finite line segment
     Representation = [(x1,y1),(x2,y2)]
     """
+
+    description = "Finite line segment"
 
     @require_postgres
     def db_type(self, connection):
@@ -66,25 +85,54 @@ class LineSegmentField(PointMixin, models.Field):
         """Convert a value from the database to a list of Point objects."""
         if value is None:
             return None
-        value = super().to_python(value)
-        if value and len(value) != 2:
-            raise ValueError("Segment needs exactly 2 points")
-        return value
+
+        if isinstance(value, list) and all(isinstance(p, Point) for p in value):
+            if len(value) != 2:
+                raise ValueError("Segment needs exactly 2 points")
+            return value
+
+        # Accept tuple of tuples, like ((x1,y1),(x2,y2))
+        if isinstance(value, list | tuple) and len(value) == 2:
+            try:
+                return [Point(*value[0]), Point(*value[1])]
+            except Exception:
+                pass  # fallback to string parsing
+
+        # Parse string: [(1,2),(3,4)]
+        segment_re = re.compile(r"\(\s*(-?\d+(?:\.\d*)?)\s*,\s*(-?\d+(?:\.\d*)?)\s*\)")
+        matches = segment_re.findall(value) if isinstance(value, str) else []
+        if len(matches) == 2:
+            return [Point(float(x), float(y)) for x, y in matches]
+
+        raise ValueError(f"Cannot parse line segment from value: {value!r}")
 
     def get_prep_value(self, value):
         """Prepare the value for saving to the database."""
-        if value and len(value) != 2:
+        if value is None:
+            return None
+        if not isinstance(value, list) or len(value) != 2:
             raise ValueError("Segment needs exactly 2 points")
-        return self._get_prep_value(value)
+
+        points = []
+        for pt in value:
+            if not isinstance(pt, Point):
+                pt = Point(*pt)  # convert tuple to Point
+            points.append(f"({pt.x},{pt.y})")
+        return f"[{','.join(points)}]"
 
     def formfield(self, **kwargs):
         """Returns a Django form field for this model field."""
         defaults = {
             "form_class": forms.CharField,
-            "help_text": "Enter two points as (x1,y1),(x2,y2)",
+            "help_text": "Enter exactly two points as (x1,y1),(x2,y2)",
         }
         defaults.update(kwargs)
         return super().formfield(**defaults)
+
+    def deconstruct(self):
+        """Deconstruct the field for migrations."""
+        name, path, args, kwargs = super().deconstruct()
+        return name, path, args, kwargs
 
 
 class BoxField(PointMixin, models.Field):
